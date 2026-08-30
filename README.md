@@ -11,6 +11,8 @@ An AI-powered web application designed to assess, analyze, and track speech clar
 - **📊 Interactive Dashboard**: Visual progress tracking and historical clarity score charts (powered by Recharts).
 - **🔐 Secure Authentication & Storage**: User accounts and audio storage powered by **Supabase**.
 - **⚡ Modern & Responsive UI**: Fast and intuitive interface built with React, Vite, and custom styling.
+  <img width="896" height="680" alt="Screenshot 2026-08-31 at 2 09 13 AM" src="https://github.com/user-attachments/assets/b49fad8d-f98e-4269-b2b5-29d8880aabc2" />
+
 
 ---
 
