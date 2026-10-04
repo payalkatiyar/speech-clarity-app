@@ -3,24 +3,13 @@ import sys
 import gc
 import shutil
 import uuid
-
-# Configure threading limits before importing heavy scientific libraries
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["NUMBA_NUM_THREADS"] = "1"
-
-# Ensure backend directory is on sys.path for relative imports
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-import torch
-torch.set_num_threads(1)
-torch.set_num_interop_threads(1)
-
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from model import CNN_GRU
+
+# Ensure backend directory is on sys.path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from audio_processing import preprocess_audio, extract_mfcc
 
 app = FastAPI(title="ALS Speech Clarity API")
@@ -33,21 +22,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = CNN_GRU().to(device)
+# Load lightweight ONNX model (< 90MB RAM) with PyTorch fallback
+onnx_path = os.path.join(os.path.dirname(__file__), "cnn_gru_model.onnx")
+pth_path = os.path.join(os.path.dirname(__file__), "cnn_gru_model.pth")
 
-try:
-    model_path = os.path.join(os.path.dirname(__file__), "cnn_gru_model.pth")
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
-    model.eval()
-    
-    # Pre-warm model with a dummy tensor to JIT initialize layers at startup
-    with torch.inference_mode():
-        dummy_tensor = torch.zeros((1, 1, 120, 200), dtype=torch.float32, device=device)
-        _ = model(dummy_tensor)
-    print("✅ Model loaded and pre-warmed successfully")
-except Exception as e:
-    print(f"❌ Failed to load model: {e}")
+ort_session = None
+torch_model = None
+
+if os.path.exists(onnx_path):
+    try:
+        import onnxruntime as ort
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = 1
+        opts.inter_op_num_threads = 1
+        ort_session = ort.InferenceSession(onnx_path, sess_options=opts, providers=['CPUExecutionProvider'])
+        dummy = np.zeros((1, 1, 120, 200), dtype=np.float32)
+        _ = ort_session.run(None, {'input': dummy})
+        print("✅ ONNX Model loaded and pre-warmed successfully (ultra-low memory)")
+    except Exception as e:
+        print(f"⚠️ ONNX load error: {e}")
+
+if ort_session is None and os.path.exists(pth_path):
+    try:
+        import torch
+        from model import CNN_GRU
+        device = torch.device('cpu')
+        torch_model = CNN_GRU().to(device)
+        torch_model.load_state_dict(torch.load(pth_path, map_location=device, weights_only=True))
+        torch_model.eval()
+        print("✅ PyTorch fallback model loaded successfully")
+    except Exception as e:
+        print(f"❌ Failed to load PyTorch model: {e}")
 
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -57,7 +62,8 @@ async def root():
     return {
         "status": "online",
         "service": "Speech Clarity API",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "engine": "ONNX Runtime (ultra-fast)" if ort_session else "PyTorch"
     }
 
 @app.get("/health")
@@ -66,7 +72,6 @@ async def health_check():
 
 @app.post("/predict")
 async def predict_clarity(audio: UploadFile = File(...)):
-    # Support any audio extension or default to .wav
     filename = audio.filename or "recording.wav"
     ext = os.path.splitext(filename)[1].lower()
     if not ext:
@@ -86,13 +91,21 @@ async def predict_clarity(audio: UploadFile = File(...)):
         signal, sr = result
         features = extract_mfcc(signal, sr)
         
-        tensor_features = torch.tensor(features, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        # Shape: (1, 1, 120, 200)
+        input_data = np.expand_dims(np.expand_dims(features.astype(np.float32), axis=0), axis=0)
         
-        with torch.inference_mode():
-            score = model(tensor_features).item()
+        if ort_session is not None:
+            raw_out = ort_session.run(None, {'input': input_data})[0]
+            score = float(raw_out)
+        elif torch_model is not None:
+            import torch
+            tensor_features = torch.tensor(input_data, dtype=torch.float32)
+            with torch.inference_mode():
+                score = torch_model(tensor_features).item()
+        else:
+            raise HTTPException(status_code=500, detail="Model engine not loaded.")
             
-        # Free memory immediately
-        del tensor_features, features, signal, result
+        del input_data, features, signal, result
         gc.collect()
         
         return {"clarity_score": float(np.clip(score, 0.0, 1.0))}
