@@ -1,20 +1,35 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
-const API_URL = import.meta.env.VITE_API_URL ;
+const RAW_API_URL = import.meta.env.VITE_API_URL || '';
+const API_URL = RAW_API_URL.trim().replace(/\/+$/, '');
 
 export const predictClarity = async (audioBlob) => {
+  if (!API_URL) {
+    throw new Error('Backend API URL is missing. Please set VITE_API_URL in Vercel environment variables and redeploy.');
+  }
+
   const formData = new FormData();
-  formData.append('audio', audioBlob, 'recording.wav');
+  const filename = audioBlob.name && audioBlob.name.toLowerCase().endsWith('.wav') 
+    ? audioBlob.name 
+    : 'recording.wav';
+  formData.append('audio', audioBlob, filename);
 
   try {
     const response = await axios.post(`${API_URL}/predict`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 90000, // 90 seconds timeout to accommodate free tier server cold starts
     });
     return response.data;
   } catch (error) {
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Server took too long to respond. Free-tier servers take 30-50s to wake up on the first request. Please try again in a few moments.');
+    }
+    if (error.message === 'Network Error') {
+      throw new Error(`Cannot reach backend at ${API_URL}. If your backend just spun up, please wait 30 seconds and retry.`);
+    }
     console.error('Error predicting clarity:', error);
     throw error;
   }

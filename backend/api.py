@@ -18,7 +18,7 @@ app = FastAPI(title="ALS Speech Clarity API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -51,12 +51,14 @@ async def health_check():
 
 @app.post("/predict")
 async def predict_clarity(audio: UploadFile = File(...)):
-    if not audio.filename.lower().endswith('.wav'):
-        raise HTTPException(status_code=400, detail="Only .wav files are supported.")
-    
-    # Prevent path traversal and race conditions
+    # Support any audio extension or default to .wav
+    filename = audio.filename or "recording.wav"
+    ext = os.path.splitext(filename)[1].lower()
+    if not ext:
+        ext = ".wav"
+        
     file_id = uuid.uuid4().hex
-    temp_path = os.path.join(TEMP_DIR, f"{file_id}.wav")
+    temp_path = os.path.join(TEMP_DIR, f"{file_id}{ext}")
     
     try:
         with open(temp_path, "wb") as buffer:
@@ -76,6 +78,8 @@ async def predict_clarity(audio: UploadFile = File(...)):
             
         return {"clarity_score": float(np.clip(score, 0.0, 1.0))}
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
