@@ -1,4 +1,8 @@
+import os
+import sys
 import gc
+import shutil
+import uuid
 
 # Configure threading limits before importing heavy scientific libraries
 os.environ["OMP_NUM_THREADS"] = "1"
