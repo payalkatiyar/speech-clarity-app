@@ -1,0 +1,9 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+.env
+temp/*
+!temp/.gitkeep
+.DS_Store

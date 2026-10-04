@@ -110,6 +110,55 @@ speech-app/
 
 ---
 
+## 🌐 Free Backend Deployment Guide
+
+Since Railway no longer offers a free tier, you can deploy this FastAPI + PyTorch backend for **100% free** using **Render** or **Hugging Face Spaces**.
+
+### Option A: Deploy to Render (Recommended - Quickest)
+
+1. Sign up / Log in to [Render.com](https://render.com/) with your GitHub account.
+2. Click **New +** -> **Web Service**.
+3. Select your repository (`speech-clarity-app`).
+4. Configure the service settings:
+   - **Name**: `speech-clarity-api`
+   - **Region**: Closest to your users (e.g., Oregon or Frankfurt)
+   - **Root Directory**: `backend`
+   - **Environment**: `Python 3`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn api:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: **Free** ($0/month)
+5. Under **Advanced Settings**:
+   - **Health Check Path**: `/health`
+   - Add Environment Variable: `PYTHON_VERSION` = `3.11.9`
+6. Click **Deploy Web Service**.
+7. Once deployed, copy your Render API URL (e.g. `https://speech-clarity-api.onrender.com`).
+
+---
+
+### Option B: Deploy to Hugging Face Spaces (Best for ML - 16 GB Free RAM)
+
+1. Create a free account at [Hugging Face](https://huggingface.co/).
+2. Click **New Space** -> Choose a name (e.g., `speech-clarity-api`).
+3. Select **Space SDK**: **Docker** (Blank).
+4. Space Hardware: **CPU Basic - Free** (2 vCPUs, 16 GB RAM).
+5. Push the files in the `backend/` folder (`Dockerfile`, `api.py`, `model.py`, `audio_processing.py`, `cnn_gru_model.pth`, `requirements.txt`) to the Space repository.
+6. Hugging Face will build the Docker container and provide a public API URL:
+   `https://<your-hf-username>-speech-clarity-api.hf.space`
+
+---
+
+## 🔗 Connecting to Vercel (Frontend)
+
+Once your backend is live on Render or Hugging Face Spaces:
+
+1. Open your [Vercel Dashboard](https://vercel.com/dashboard).
+2. Go to your **Speech App Project** -> **Settings** -> **Environment Variables**.
+3. Edit or add:
+   - **`VITE_API_URL`**: `https://<your-backend-service-url>` (e.g. `https://speech-clarity-api.onrender.com` without a trailing slash).
+4. Go to the **Deployments** tab on Vercel -> Click the 3 dots on the latest deployment -> **Redeploy** (to bake in the updated environment variable).
+
+---
+
 ## 📄 License
 
 This project is open-source and available under the [MIT License](LICENSE).

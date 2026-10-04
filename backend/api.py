@@ -1,6 +1,11 @@
 import os
+import sys
 import shutil
 import uuid
+
+# Ensure backend directory is on sys.path for relative imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import torch
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException
@@ -31,6 +36,18 @@ except Exception as e:
 
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+@app.get("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "Speech Clarity API",
+        "version": "1.0.0"
+    }
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 @app.post("/predict")
 async def predict_clarity(audio: UploadFile = File(...)):
